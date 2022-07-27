@@ -124,7 +124,7 @@ static void free_transfer_buffers(unsigned char **databuffers,
 static void sig_hdlr(int signum) {
 
   (void)signum;
-  fprintf(stderr, "Abort. Stopping transfers\n");
+  fprintf(stderr, "\nAbort. Stopping transfers\n");
   stop_transfers = true;
 }
 
@@ -287,7 +287,7 @@ int main(int argc, char const *argv[]) {
   do {
     libusb_handle_events(NULL);
 
-  } while (t2.tv_sec < (t1.tv_sec + duration) && stop_transfers != true);
+  } while (stop_transfers != true);
 
   fprintf(stderr, "Test complete. Stopping transfers\n");
   stop_transfers = true;

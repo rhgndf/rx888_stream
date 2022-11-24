@@ -1,5 +1,5 @@
-# rx888_test
-
+# rx888_stream
+Outputs samples to stdout
 1. make
-2. ./my_usb_example SDDC_FX3.img (upload RX888 image)
-3. ./my_usb_example (sometime i need to run it couple of times to begin streaming)
+2. ./rx888_stream -f SDDC_FX3.img --samplerate 32000000
+3. ./rx888_stream (sometime i need to run it couple of times to begin streaming)

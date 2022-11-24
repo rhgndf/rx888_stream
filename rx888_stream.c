@@ -35,6 +35,7 @@ SOFTWARE.
 #include <time.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <string.h>
 
 //#define HAS_FIRMWARE true
 
@@ -140,10 +141,20 @@ static void sig_hdlr(int signum) {
   fprintf(stderr, "\nAbort. Stopping transfers\n");
   stop_transfers = true;
 }
+void printhelp() {
+    fprintf(stderr, " --verbose, -v      Verbose output\n");
+    fprintf(stderr, " --firmware, -f     Firmware file\n");
+    fprintf(stderr, " --dither, -d       Enable dithering\n");
+    fprintf(stderr, " --rand, -r         Enable output randomization\n");
+    fprintf(stderr, " --samplerate, -s   Sample Rate, default 32000000\n");
+    fprintf(stderr, " --gainmode, -m     Gain Mode low/high, default high\n");
+    fprintf(stderr, " --gain, -g         Gain value, default 3\n");
 
+}
 int main(int argc, char **argv) {
 
   unsigned int samplerate = 32000000;
+  unsigned int gain = 0x83;
   int c;
   while (1) {
       static struct option long_options[] =
@@ -153,13 +164,15 @@ int main(int argc, char **argv) {
           {"dither"    ,       no_argument, &dither       ,'d'},
           {"rand"      ,       no_argument, &randomizer   ,'r'},
           {"samplerate", required_argument, 0             ,'s'},
+          {"gainmode"  , required_argument, 0             ,'m'},
+          {"gain"      , required_argument, 0             ,'g'},
           {"help"      ,       no_argument, 0             ,'h'},
           {0, 0, 0, 0}
         };
 
       int option_index = 0;
 
-      c = getopt_long (argc, argv, "f:drs:h",
+      c = getopt_long (argc, argv, "f:drs:hm:g:",
                        long_options, &option_index);
 
       if (c == -1)
@@ -181,15 +194,33 @@ int main(int argc, char **argv) {
           samplerate = strtoul(optarg, NULL, 10);
           break;
 
+        case 'm':
+          if (strcmp(optarg, "high")) {
+            gain |= 0x80;
+          } else if (strcmp(optarg, "low")) {
+            gain &= ~0x80;
+          } else {
+            fprintf(stderr, "Invalid gain mode %s\n");
+            printhelp();
+            return 0;
+          }
+          break;
+
+        case 'g':
+          int gainvalue = strtol(optarg, NULL, 10);
+          if (gainvalue < 0 || gainvalue > 127) {
+            fprintf(stderr, "Invalid gain value %d\n", gainvalue);
+            printhelp();
+            return 0;
+          }
+          gain &= ~0x7f;
+          gain |= gainvalue;
+          break;
+        
         case 'h':
         case '?':
           /* getopt_long already printed an error message. */
-        
-          fprintf(stderr, " --verbose, -v      Verbose output\n");
-          fprintf(stderr, " --firmware, -f     Firmware file\n");
-          fprintf(stderr, " --dither, -d       Enable dithering\n");
-          fprintf(stderr, " --rand, -r         Enable output randomization\n");
-          fprintf(stderr, " --samplerate, -s   Sample Rate\n");
+          printhelp();
           return 0;
 
         default:
@@ -355,12 +386,18 @@ has_firmware:
   if (randomizer) {
     gpio |= RANDO;
   }
-  command_send(dev_handle, GPIOFX3, gpio);
-  command_send(dev_handle, STARTADC, samplerate);
-  // usleep(5000);
-  command_send(dev_handle, STARTFX3, 0);
 
-  argument_send(dev_handle, AD8340_VGA, 0x83);
+  usleep(5000);
+  command_send(dev_handle, GPIOFX3, gpio);
+  usleep(5000);
+  command_send(dev_handle, STARTADC, samplerate);
+  usleep(5000);
+  command_send(dev_handle, STOPFX3, 0);
+  usleep(5000);
+  command_send(dev_handle, STARTFX3, 0);
+  usleep(5000);
+
+  argument_send(dev_handle, AD8340_VGA, gain);
   //argument_send(dev_handle, PRESELECTOR, 2);
   /*******/
 

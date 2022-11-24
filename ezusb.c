@@ -315,3 +315,23 @@ int command_send(struct libusb_device_handle *dev_handle, enum FX3Command cmd,
 
   return 0;
 }
+
+int argument_send(struct libusb_device_handle *dev_handle, enum ArgumentList cmd,
+                 uint32_t data) {
+
+  int ret;
+
+  /* Send the control message. */
+  uint8_t zero = 0;
+  ret = libusb_control_transfer(
+      dev_handle, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT, SETARGFX3, data, cmd,
+      (unsigned char *)&zero, sizeof(zero), 0);
+
+  if (ret < 0) {
+    fprintf(stderr, "Could not send argument: 0x%X with data: %d. Error : %s.\n",
+            cmd, data, libusb_error_name(ret));
+    return -1;
+  }
+
+  return 0;
+}

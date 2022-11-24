@@ -34,6 +34,7 @@ SOFTWARE.
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <getopt.h>
 
 //#define HAS_FIRMWARE true
 
@@ -41,7 +42,7 @@ unsigned int queuedepth = 16; // Number of requests to queue
 unsigned int reqsize = 8;     // Request size in number of packets
 unsigned int duration = 100;  // Duration of the test in seconds
 
-const char *firmware;
+const char *firmware = NULL;
 
 static unsigned int ep = 1 | LIBUSB_ENDPOINT_IN;
 
@@ -73,20 +74,22 @@ static void transfer_callback(struct libusb_transfer *transfer) {
   } else {
     size = transfer->actual_length;
     success_count++;
+
+    write(1, transfer->buffer, transfer->actual_length);
   }
   transfer_size += size;
   transfer_index++;
   if (transfer_index == queuedepth) {
-    gettimeofday(&tv_end, NULL);
+    /*gettimeofday(&tv_end, NULL);
     elapsed_time = ((tv_end.tv_sec - tv_start.tv_sec) * 1000000 +
                     (tv_end.tv_usec - tv_start.tv_usec));
     printf("Transfer Counts: %d pass %d fail. %d per pass\n", success_count,
            failure_count, transfer->actual_length);
     rate = ((double)transfer_size / 1024) / ((double)elapsed_time / 1000000);
-    printf("Data Rate: %d KBps\n\n", (uint32_t)rate);
+    printf("Data Rate: %d KBps\n\n", (uint32_t)rate);*/
     transfer_index = 0;
     transfer_size = 0;
-    tv_start = tv_end;
+    //tv_start = tv_end;
   }
 
   if (!stop_transfers) {
@@ -128,7 +131,69 @@ static void sig_hdlr(int signum) {
   stop_transfers = true;
 }
 
-int main(int argc, char const *argv[]) {
+static int verbose;
+static int randomizer;
+static int dither;
+static int has_firmware;
+int main(int argc, char **argv) {
+
+  unsigned int samplerate = 32000000;
+  int c;
+  while (1) {
+      static struct option long_options[] =
+        {
+          {"verbose"   ,       no_argument, &verbose      , 1 },
+          {"firmware"  , required_argument, &has_firmware ,'f'},
+          {"dither"    ,       no_argument, &dither       ,'d'},
+          {"rand"      ,       no_argument, &randomizer   ,'r'},
+          {"samplerate", required_argument, 0             ,'s'},
+          {"help"      ,       no_argument, 0             ,'h'},
+          {0, 0, 0, 0}
+        };
+
+      int option_index = 0;
+
+      c = getopt_long (argc, argv, "f:drs:h",
+                       long_options, &option_index);
+
+      if (c == -1)
+        break;
+
+      if (c == 0) {
+        if (long_options[option_index].flag != 0)
+          break;
+        c = long_options[option_index].val;
+      }
+      switch (c)
+        {
+
+        case 'f':
+          firmware = optarg;
+          break;
+
+        case 's':
+          samplerate = strtoul(optarg, NULL, 10);
+          break;
+
+        case 'h':
+        case '?':
+          /* getopt_long already printed an error message. */
+        
+          fprintf(stderr, " --verbose, -v      Verbose output\n");
+          fprintf(stderr, " --firmware, -f     Firmware file\n");
+          fprintf(stderr, " --dither, -d       Enable dithering\n");
+          fprintf(stderr, " --rand, -r         Enable output randomization\n");
+          fprintf(stderr, " --samplerate, -s   Sample Rate\n");
+          return 0;
+
+        default:
+        }
+  }
+
+  fprintf(stderr, "Firmware: %s\n", firmware);
+  fprintf(stderr, "Sample Rate: %u\n", samplerate);
+  fprintf(stderr, "Output Randomizer %s, Dither: %s\n", randomizer ? "On" : "Off", dither ? "On" : "Off");
+
   /* code */
   struct libusb_device_descriptor desc;
   struct libusb_device *dev;
@@ -184,15 +249,13 @@ int main(int argc, char const *argv[]) {
 #endif
   vendor_id = 0x04b4;
 
-  if (argv[1]) { // there is argument with image file
-    firmware = argv[1];
+  if (firmware) { // there is argument with image file
     vendor_id = 0x04b4;
     product_id = 0x00f3;
     // no firmware. upload the firmware
     dev_handle = libusb_open_device_with_vid_pid(NULL, vendor_id, product_id);
     if (!dev_handle) {
-      fprintf(stderr, "Error or device could not be found\n");
-      goto close;
+      goto has_firmware;
     }
 
     dev = libusb_get_device(dev_handle);
@@ -209,10 +272,12 @@ int main(int argc, char const *argv[]) {
     sleep(2);
   }
 
+has_firmware:
+
   product_id = 0x00f1;
   dev_handle = libusb_open_device_with_vid_pid(NULL, vendor_id, product_id);
   if (!dev_handle) {
-    fprintf(stderr, "Error or device could not be found\n");
+    fprintf(stderr, "Error or device could not be found, try loading firmware\n");
     goto close;
   }
 
@@ -276,12 +341,21 @@ int main(int argc, char const *argv[]) {
       xfers_in_progress++;
   }
 
-  int samplerate = 150 * 1000 * 1000;
   /******/
+  uint32_t gpio = 0;
+  if (dither) {
+    gpio |= DITH;
+  }
+  if (randomizer) {
+    gpio |= RANDO;
+  }
+  command_send(dev_handle, GPIOFX3, gpio);
   command_send(dev_handle, STARTADC, samplerate);
   // usleep(5000);
   command_send(dev_handle, STARTFX3, 0);
 
+  argument_send(dev_handle, AD8340_VGA, 0x83);
+  //argument_send(dev_handle, PRESELECTOR, 2);
   /*******/
 
   do {

@@ -67,7 +67,81 @@ enum FX3Command {
   READINFODEBUG = 0xBA,
 };
 
+enum ArgumentList {
+    // Set R8xx lna/mixer gain
+    // value: 0-29
+    R82XX_ATTENUATOR = 1,
+
+    // Set R8xx vga gain
+    // value: 0-15
+    R82XX_VGA = 2,
+
+    // Set R8xx sideband
+    // value: 0/1
+    R82XX_SIDEBAND = 3,
+
+    // Set R8xx harmonic
+    // value: 0/1
+    R82XX_HARMONIC = 4,
+
+    // Set DAT-31 Att
+    // Value: 0-63
+    DAT31_ATT = 10,
+
+    // Set AD8340 chip vga
+    // Value: 0-255
+    AD8340_VGA = 11,
+
+    // Preselector
+    // Value: 0-2
+    PRESELECTOR = 12,
+
+    // VHFATT
+    // Value: 0-15
+    VHF_ATTENUATOR = 13,
+};
+
+#define OUTXIO0 (1U << 0) 	// ATT_LE
+#define OUTXIO1 (1U << 1) 	// ATT_CLK
+#define OUTXIO2 (1U << 2) 	// ATT_DATA
+#define OUTXIO3 (1U << 3)  	// SEL0
+#define OUTXIO4 (1U << 4) 	// SEL1
+#define OUTXIO5 (1U << 5)  	// SHDWN
+#define OUTXIO6 (1U << 6)  	// DITH
+#define OUTXIO7 (1U << 7)  	// RAND
+
+#define OUTXIO8 (1U << 8) 	// 256
+#define OUTXIO9 (1U << 9) 	// 512
+#define OUTXI10 (1U << 10) 	// 1024
+#define OUTXI11 (1U << 11)  	// 2048
+#define OUTXI12 (1U << 12) 	// 4096
+#define OUTXI13 (1U << 13)  	// 8192
+#define OUTXI14 (1U << 14)  	// 16384
+#define OUTXI15 (1U << 15)  	// 32768
+#define OUTXI16 (1U << 16)
+
+enum GPIOPin {
+    SHDWN = OUTXIO5,
+    DITH = OUTXIO6,
+    RANDO = OUTXIO7,
+    BIAS_HF = OUTXIO8,
+    BIAS_VHF = OUTXIO9,
+    LED_YELLOW = OUTXI10,
+    LED_RED = OUTXI11,
+    LED_BLUE = OUTXI12,
+    ATT_SEL0 = OUTXI13,
+    ATT_SEL1 = OUTXI14,
+
+    // RX888r2
+    VHF_EN = OUTXI15,
+    PGA_EN = OUTXI16,
+};
+
+
+
 int command_send(struct libusb_device_handle *dev_handle, enum FX3Command cmd,
+                 uint32_t data);
+int argument_send(struct libusb_device_handle *dev_handle, enum ArgumentList cmd,
                  uint32_t data);
 int ezusb_upload_firmware(libusb_device *dev, int configuration,
                           const char *name);

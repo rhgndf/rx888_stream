@@ -59,6 +59,11 @@ volatile int xfers_in_progress = 0;
 
 volatile int sleep_time = 0;
 
+static int verbose;
+static int randomizer;
+static int dither;
+static int has_firmware;
+
 static void transfer_callback(struct libusb_transfer *transfer) {
   unsigned int elapsed_time;
   int size = 0;
@@ -68,13 +73,18 @@ static void transfer_callback(struct libusb_transfer *transfer) {
 
   if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
     failure_count++;
-    printf("Transfer callback status %s received %d \
+    fprintf(stderr, "Transfer callback status %s received %d \
 	   bytes.\n",
            libusb_error_name(transfer->status), transfer->actual_length);
   } else {
     size = transfer->actual_length;
     success_count++;
-
+    uint16_t *samples = (uint16_t*)transfer->buffer;
+    if (randomizer) {
+      for(int i = 0;i < size / 2;i++) {
+        samples[i] ^= 0xfffe * (samples[i] & 1);
+      }
+    }
     write(1, transfer->buffer, transfer->actual_length);
   }
   transfer_size += size;
@@ -131,10 +141,6 @@ static void sig_hdlr(int signum) {
   stop_transfers = true;
 }
 
-static int verbose;
-static int randomizer;
-static int dither;
-static int has_firmware;
 int main(int argc, char **argv) {
 
   unsigned int samplerate = 32000000;

@@ -179,6 +179,11 @@ int main(int argc, char **argv) {
 
         case 's':
           samplerate = strtoul(optarg, NULL, 10);
+          if (samplerate < 1000000) {
+            fprintf(stderr, "Invalid samplerate %d\n", samplerate);
+            printhelp();
+            return 0;
+          }
           break;
 
         case 'm':

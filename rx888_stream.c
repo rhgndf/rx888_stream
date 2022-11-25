@@ -22,7 +22,9 @@ SOFTWARE.
 
 */
 
+#include <errno.h>
 #include "ezusb.h"
+#include <getopt.h>
 #include <libusb.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -30,12 +32,11 @@ SOFTWARE.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <getopt.h>
-#include <string.h>
 
 //#define HAS_FIRMWARE true
 
@@ -49,7 +50,6 @@ static unsigned int ep = 1 | LIBUSB_ENDPOINT_IN;
 
 static int interface_number = 0;
 static struct libusb_device_handle *dev_handle = NULL;
-static struct timeval tv_start, tv_end;
 unsigned int pktsize;
 unsigned int success_count = 0;  // Number of successful transfers
 unsigned int failure_count = 0;  // Number of failed transfers
@@ -66,9 +66,8 @@ static int dither;
 static int has_firmware;
 
 static void transfer_callback(struct libusb_transfer *transfer) {
-  unsigned int elapsed_time;
   int size = 0;
-  double rate;
+  int ret = 0;
 
   xfers_in_progress--;
 
@@ -86,23 +85,11 @@ static void transfer_callback(struct libusb_transfer *transfer) {
         samples[i] ^= 0xfffe * (samples[i] & 1);
       }
     }
-    write(1, transfer->buffer, transfer->actual_length);
+    ret = write(1, transfer->buffer, transfer->actual_length);
+    if (ret < 0) {
+      fprintf(stderr, "Error writing to stdout: %s", strerror(errno));
+    }
   }
-  transfer_size += size;
-  transfer_index++;
-  if (transfer_index == queuedepth) {
-    /*gettimeofday(&tv_end, NULL);
-    elapsed_time = ((tv_end.tv_sec - tv_start.tv_sec) * 1000000 +
-                    (tv_end.tv_usec - tv_start.tv_usec));
-    printf("Transfer Counts: %d pass %d fail. %d per pass\n", success_count,
-           failure_count, transfer->actual_length);
-    rate = ((double)transfer_size / 1024) / ((double)elapsed_time / 1000000);
-    printf("Data Rate: %d KBps\n\n", (uint32_t)rate);*/
-    transfer_index = 0;
-    transfer_size = 0;
-    //tv_start = tv_end;
-  }
-
   if (!stop_transfers) {
     if (libusb_submit_transfer(transfer) == 0)
       xfers_in_progress++;
@@ -200,7 +187,7 @@ int main(int argc, char **argv) {
           } else if (strcmp(optarg, "low")) {
             gain &= ~0x80;
           } else {
-            fprintf(stderr, "Invalid gain mode %s\n");
+            fprintf(stderr, "Invalid gain mode %s\n", optarg);
             printhelp();
             return 0;
           }
@@ -239,10 +226,7 @@ int main(int argc, char **argv) {
   struct libusb_config_descriptor *config;
   struct libusb_interface_descriptor const *interfaceDesc;
   int ret;
-  int if_numsettings;
   int rStatus;
-  int64_t fw_updated;
-  struct timespec tp;
 
   uint16_t vendor_id;  //= 0x04b4;
   uint16_t product_id; // = 0x00f1;
@@ -256,9 +240,6 @@ int main(int argc, char **argv) {
 
   struct libusb_transfer **transfers = NULL; // List of transfer structures.
   unsigned char **databuffers = NULL;        // List of data buffers.
-
-  struct timeval t1, t2, tv; // Timestamps used for test duration control
-  long sec, usec;
 
   // if (argc == 2) {
   //    product_id = 0x00f3; //image file in arg,so upload it later
@@ -298,7 +279,7 @@ int main(int argc, char **argv) {
     dev = libusb_get_device(dev_handle);
 
     if (ezusb_upload_firmware(dev, 1, firmware) == 0) {
-      fw_updated = clock_gettime(CLOCK_MONOTONIC, &tp);
+      fprintf(stderr, "Firmware updated\n");
     } else {
       fprintf(stderr,
               "Firmware upload failed for "
@@ -366,8 +347,6 @@ has_firmware:
     fprintf(stderr, "Failed to allocate buffers and transfers\n");
     free_transfer_buffers(databuffers, transfers);
   }
-
-  gettimeofday(&tv_start, NULL);
 
   for (unsigned int i = 0; i < queuedepth; i++) {
     libusb_fill_bulk_transfer(transfers[i], dev_handle, ep, databuffers[i],

@@ -177,6 +177,14 @@ int main(int argc, char **argv) {
           firmware = optarg;
           break;
 
+        case 'r':
+          randomizer = 1;
+          break;
+        
+        case 'd':
+          dither = 1;
+          break;
+          
         case 's':
           samplerate = strtoul(optarg, NULL, 10);
           if (samplerate < 1000000) {
@@ -222,7 +230,7 @@ int main(int argc, char **argv) {
   fprintf(stderr, "Firmware: %s\n", firmware);
   fprintf(stderr, "Sample Rate: %u\n", samplerate);
   fprintf(stderr, "Output Randomizer %s, Dither: %s\n", randomizer ? "On" : "Off", dither ? "On" : "Off");
-
+  fprintf(stderr, "Gain Mode: %s, Gain: %d\n", gain & 0x80 ? "High" : "Low", gain & 0x7f);
   /* code */
   struct libusb_device_descriptor desc;
   struct libusb_device *dev;
@@ -380,7 +388,6 @@ has_firmware:
   usleep(5000);
   command_send(dev_handle, STARTFX3, 0);
   usleep(5000);
-
   argument_send(dev_handle, AD8340_VGA, gain);
   //argument_send(dev_handle, PRESELECTOR, 2);
   /*******/

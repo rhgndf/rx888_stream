@@ -1,149 +1,120 @@
-#ifndef AEED665A_44C2_4A05_B7F0_159B1C39787C
-#define AEED665A_44C2_4A05_B7F0_159B1C39787C
+#ifndef ezusb_H
+#define ezusb_H
+/*
+ * Copyright © 2001 Stephen Williams (steve@icarus.com)
+ * Copyright © 2002 David Brownell (dbrownell@users.sourceforge.net)
+ * Copyright © 2013 Federico Manzan (f.manzan@gmail.com)
+ *
+ *    This source code is free software; you can redistribute it
+ *    and/or modify it in source code form under the terms of the GNU
+ *    General Public License as published by the Free Software
+ *    Foundation; either version 2 of the License, or (at your option)
+ *    any later version.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this program; if not, write to the Free Software
+ *    Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA
+ */
 
-#include "libusb.h"
+#include <stdbool.h>
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 #include <stdint.h>
 
-enum FX3Command {
-  // Start GPII engine and stream the data from ADC
-  // WRITE: UINT32
-  STARTFX3 = 0xAA,
+#include "libusb.h"
+#include "rx888.h"
 
-  // Stop GPII engine
-  // WRITE: UINT32
-  STOPFX3 = 0xAB,
+#define FX_TYPE_UNDEFINED  -1
+#define FX_TYPE_AN21       0	/* Original AnchorChips parts */
+#define FX_TYPE_FX1        1	/* Updated Cypress versions */
+#define FX_TYPE_FX2        2	/* USB 2.0 versions */
+#define FX_TYPE_FX2LP      3	/* Updated FX2 */
+#define FX_TYPE_FX3        4	/* USB 3.0 versions */
+#define FX_TYPE_MAX        5
+#define FX_TYPE_NAMES      { "an21", "fx", "fx2", "fx2lp", "fx3" }
 
-  // Get the information of device
-  // including model, version
-  // READ: UINT32
-  TESTFX3 = 0xAC,
+#define IMG_TYPE_UNDEFINED -1
+#define IMG_TYPE_HEX       0	/* Intel HEX */
+#define IMG_TYPE_IIC       1	/* Cypress 8051 IIC */
+#define IMG_TYPE_BIX       2	/* Cypress 8051 BIX */
+#define IMG_TYPE_IMG       3	/* Cypress IMG format */
+#define IMG_TYPE_MAX       4
+#define IMG_TYPE_NAMES     { "Intel HEX", "Cypress 8051 IIC", "Cypress 8051 BIX", "Cypress IMG format" }
 
-  // Control GPIOs
-  // WRITE: UINT32
-  GPIOFX3 = 0xAD,
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-  // Write data to I2c bus
-  // WRITE: DATA
-  // INDEX: reg
-  // VALUE: i2c_addr
-  I2CWFX3 = 0xAE,
+/*
+ * Automatically identified devices (VID, PID, type, designation).
+ * TODO: Could use some validation. Also where's the FX2?
+ */
+typedef struct {
+	uint16_t vid;
+	uint16_t pid;
+	int type;
+	const char* designation;
+} fx_known_device;
 
-  // Read data from I2c bus
-  // READ: DATA
-  // INDEX: reg
-  // VALUE: i2c_addr
-  I2CRFX3 = 0xAF,
+#define FX_KNOWN_DEVICES { \
+	{ 0x0547, 0x2122, FX_TYPE_AN21, "Cypress EZ-USB (2122S)" },\
+	{ 0x0547, 0x2125, FX_TYPE_AN21, "Cypress EZ-USB (2121S/2125S)" },\
+	{ 0x0547, 0x2126, FX_TYPE_AN21, "Cypress EZ-USB (2126S)" },\
+	{ 0x0547, 0x2131, FX_TYPE_AN21, "Cypress EZ-USB (2131Q/2131S/2135S)" },\
+	{ 0x0547, 0x2136, FX_TYPE_AN21, "Cypress EZ-USB (2136S)" },\
+	{ 0x0547, 0x2225, FX_TYPE_AN21, "Cypress EZ-USB (2225)" },\
+	{ 0x0547, 0x2226, FX_TYPE_AN21, "Cypress EZ-USB (2226)" },\
+	{ 0x0547, 0x2235, FX_TYPE_AN21, "Cypress EZ-USB (2235)" },\
+	{ 0x0547, 0x2236, FX_TYPE_AN21, "Cypress EZ-USB (2236)" },\
+	{ 0x04b4, 0x6473, FX_TYPE_FX1, "Cypress EZ-USB FX1" },\
+	{ 0x04b4, 0x8613, FX_TYPE_FX2LP, "Cypress EZ-USB FX2LP (68013A/68014A/68015A/68016A)" }, \
+	{ 0x04b4, 0x00f3, FX_TYPE_FX3, "Cypress FX3" },\
+}
 
-  // Reset USB chip and get back to bootloader mode
-  // WRITE: NONE
-  RESETFX3 = 0xB1,
+/*
+ * This function uploads the firmware from the given file into RAM.
+ * Stage == 0 means this is a single stage load (or the first of
+ * two stages).  Otherwise it's the second of two stages; the 
+ * caller having preloaded the second stage loader.
+ *
+ * The target processor is reset at the end of this upload.
+ */
+extern int ezusb_load_ram(libusb_device_handle *device,
+	const char *path, int fx_type, int img_type, int stage);
 
-  // Set Argument, packet Index/Vaule contains the data
-  // WRITE: (Additional Data)
-  // INDEX: Argument_index
-  // VALUE: arguement value
-  SETARGFX3 = 0xB6,
+/*
+ * This function uploads the firmware from the given file into EEPROM.
+ * This uses the right CPUCS address to terminate the EEPROM load with
+ * a reset command where FX parts behave differently than FX2 ones.
+ * The configuration byte is as provided here (zero for an21xx parts)
+ * and the EEPROM type is set so that the microcontroller will boot
+ * from it.
+ *
+ * The caller must have preloaded a second stage loader that knows
+ * how to respond to the EEPROM write request.
+ */
+extern int ezusb_load_eeprom(libusb_device_handle *device,
+	const char *path, int fx_type, int img_type, int config);
 
-  // Start ADC with the specific frequency
-  // Optional, if ADC is running with crystal, this is not needed.
-  // WRITE: UINT32 -> adc frequency
-  STARTADC = 0xB2,
+/* Verbosity level (default 1). Can be increased or decreased with options v/q  */
+extern int verbose;
 
-  // R82XX family Tuner functions
-  // Initialize R82XX tuner
-  // WRITE: NONE
-  TUNERINIT = 0xB4,
-
-  // Tune to a sepcific frequency
-  // WRITE: UINT64
-  TUNERTUNE = 0xB5,
-
-  // Stop Tuner
-  // WRITE: NONE
-  TUNERSTDBY = 0xB8,
-
-  // Read Debug string if any
-  // READ:
-  READINFODEBUG = 0xBA,
-};
-
-enum ArgumentList {
-    // Set R8xx lna/mixer gain
-    // value: 0-29
-    R82XX_ATTENUATOR = 1,
-
-    // Set R8xx vga gain
-    // value: 0-15
-    R82XX_VGA = 2,
-
-    // Set R8xx sideband
-    // value: 0/1
-    R82XX_SIDEBAND = 3,
-
-    // Set R8xx harmonic
-    // value: 0/1
-    R82XX_HARMONIC = 4,
-
-    // Set DAT-31 Att
-    // Value: 0-63
-    DAT31_ATT = 10,
-
-    // Set AD8340 chip vga
-    // Value: 0-255
-    AD8340_VGA = 11,
-
-    // Preselector
-    // Value: 0-2
-    PRESELECTOR = 12,
-
-    // VHFATT
-    // Value: 0-15
-    VHF_ATTENUATOR = 13,
-};
-
-#define OUTXIO0 (1U << 0) 	// ATT_LE
-#define OUTXIO1 (1U << 1) 	// ATT_CLK
-#define OUTXIO2 (1U << 2) 	// ATT_DATA
-#define OUTXIO3 (1U << 3)  	// SEL0
-#define OUTXIO4 (1U << 4) 	// SEL1
-#define OUTXIO5 (1U << 5)  	// SHDWN
-#define OUTXIO6 (1U << 6)  	// DITH
-#define OUTXIO7 (1U << 7)  	// RAND
-
-#define OUTXIO8 (1U << 8) 	// 256
-#define OUTXIO9 (1U << 9) 	// 512
-#define OUTXI10 (1U << 10) 	// 1024
-#define OUTXI11 (1U << 11)  	// 2048
-#define OUTXI12 (1U << 12) 	// 4096
-#define OUTXI13 (1U << 13)  	// 8192
-#define OUTXI14 (1U << 14)  	// 16384
-#define OUTXI15 (1U << 15)  	// 32768
-#define OUTXI16 (1U << 16)
-
-enum GPIOPin {
-    SHDWN = OUTXIO5,
-    DITH = OUTXIO6,
-    RANDO = OUTXIO7,
-    BIAS_HF = OUTXIO8,
-    BIAS_VHF = OUTXIO9,
-    LED_YELLOW = OUTXI10,
-    LED_RED = OUTXI11,
-    LED_BLUE = OUTXI12,
-    ATT_SEL0 = OUTXI13,
-    ATT_SEL1 = OUTXI14,
-
-    // RX888r2
-    VHF_EN = OUTXI15,
-    PGA_EN = OUTXI16,
-};
-
-
+extern void logerror(const char *format, ...)/* PRINTF_FORMAT(1, 2)*/;
 
 int command_send(struct libusb_device_handle *dev_handle, enum FX3Command cmd,
                  uint32_t data);
 int argument_send(struct libusb_device_handle *dev_handle, enum ArgumentList cmd,
                  uint32_t data);
-int ezusb_upload_firmware(libusb_device *dev, int configuration,
-                          const char *name);
 
-#endif /* AEED665A_44C2_4A05_B7F0_159B1C39787C */
+#ifdef __cplusplus
+}
+#endif
+
+#endif

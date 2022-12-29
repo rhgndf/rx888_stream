@@ -60,7 +60,7 @@ volatile int xfers_in_progress = 0;
 
 volatile int sleep_time = 0;
 
-static int verbose;
+int verbose;
 static int randomizer;
 static int dither;
 static int has_firmware;
@@ -135,6 +135,7 @@ void printhelp() {
     fprintf(stderr, " --rand, -r         Enable output randomization\n");
     fprintf(stderr, " --samplerate, -s   Sample Rate, default 32000000\n");
     fprintf(stderr, " --gainmode, -m     Gain Mode low/high, default high\n");
+    fprintf(stderr, " --att, -a          Attenuation, default 0\n");
     fprintf(stderr, " --gain, -g         Gain value, default 3\n");
 
 }
@@ -142,6 +143,7 @@ int main(int argc, char **argv) {
 
   unsigned int samplerate = 32000000;
   unsigned int gain = 0x83;
+  unsigned int att = 0;
   int c;
   while (1) {
       static struct option long_options[] =
@@ -153,13 +155,14 @@ int main(int argc, char **argv) {
           {"samplerate", required_argument, 0             ,'s'},
           {"gainmode"  , required_argument, 0             ,'m'},
           {"gain"      , required_argument, 0             ,'g'},
+          {"att"       , required_argument, 0             ,'a'},
           {"help"      ,       no_argument, 0             ,'h'},
           {0, 0, 0, 0}
         };
 
       int option_index = 0;
 
-      c = getopt_long (argc, argv, "f:drs:hm:g:",
+      c = getopt_long (argc, argv, "f:drs:hm:g:a:",
                        long_options, &option_index);
 
       if (c == -1)
@@ -184,7 +187,11 @@ int main(int argc, char **argv) {
         case 'd':
           dither = 1;
           break;
-          
+        
+        case 'v':
+          verbose = 10;
+          break;
+        
         case 's':
           samplerate = strtoul(optarg, NULL, 10);
           if (samplerate < 1000000) {
@@ -217,6 +224,14 @@ int main(int argc, char **argv) {
           gain |= gainvalue;
           break;
         
+        case 'a':
+          att = strtol(optarg, NULL, 10);
+          if (att < 0 || att > 63) {
+            fprintf(stderr, "Invalid attenuation value %d\n", att);
+            printhelp();
+            return 0;
+          }
+          break;
         case 'h':
         case '?':
           /* getopt_long already printed an error message. */
@@ -230,7 +245,7 @@ int main(int argc, char **argv) {
   fprintf(stderr, "Firmware: %s\n", firmware);
   fprintf(stderr, "Sample Rate: %u\n", samplerate);
   fprintf(stderr, "Output Randomizer %s, Dither: %s\n", randomizer ? "On" : "Off", dither ? "On" : "Off");
-  fprintf(stderr, "Gain Mode: %s, Gain: %d\n", (gain & 0x80) ? "High" : "Low", gain & 0x7f);
+  fprintf(stderr, "Gain Mode: %s, Gain: %u, Att: %u\n", (gain & 0x80) ? "High" : "Low", gain & 0x7f, att);
   /* code */
   struct libusb_device_descriptor desc;
   struct libusb_device *dev;
@@ -254,31 +269,12 @@ int main(int argc, char **argv) {
   struct libusb_transfer **transfers = NULL; // List of transfer structures.
   unsigned char **databuffers = NULL;        // List of data buffers.
 
-  // if (argc == 2) {
-  //    product_id = 0x00f3; //image file in arg,so upload it later
-  // } else {
-  //   //fprintf(stderr, "Please specify firmware image file in argument");
-  //   //exit(1);
-  // }
-
   ret = libusb_init(NULL);
   if (ret != 0) {
     fprintf(stderr, "Error initializing libusb: %s\n", libusb_error_name(ret));
     exit(1);
   }
 
-#if 0
-  ret = libusb_kernel_driver_active(dev_handle, 0);
-  if (ret != 0) {
-    fprintf(stderr, "Kernel driver active. Trying to detach kernel driver\n");
-    ret = libusb_detach_kernel_driver(dev_handle, 0);
-    if (ret != 0) {
-      fprintf(stderr, "Could not detach kernel driver from an interface\n");
-      goto close;
-    }
-  }
-#endif
-  vendor_id = 0x04b4;
 
   if (firmware) { // there is argument with image file
     vendor_id = 0x04b4;
@@ -291,7 +287,7 @@ int main(int argc, char **argv) {
 
     dev = libusb_get_device(dev_handle);
 
-    if (ezusb_upload_firmware(dev, 1, firmware) == 0) {
+    if (ezusb_load_ram(dev_handle, firmware, FX_TYPE_FX3, IMG_TYPE_IMG, 1) == 0) {
       fprintf(stderr, "Firmware updated\n");
     } else {
       fprintf(stderr,
@@ -305,6 +301,7 @@ int main(int argc, char **argv) {
 
 has_firmware:
 
+  vendor_id = 0x04b4;
   product_id = 0x00f1;
   dev_handle = libusb_open_device_with_vid_pid(NULL, vendor_id, product_id);
   if (!dev_handle) {
@@ -312,6 +309,16 @@ has_firmware:
     goto close;
   }
 
+  ret = libusb_kernel_driver_active(dev_handle, 0);
+  if (ret != 0) {
+    fprintf(stderr, "Kernel driver active. Trying to detach kernel driver\n");
+    ret = libusb_detach_kernel_driver(dev_handle, 0);
+    if (ret != 0) {
+      fprintf(stderr, "Could not detach kernel driver from an interface\n");
+      goto close;
+    }
+  }
+  
   dev = libusb_get_device(dev_handle);
 
   libusb_get_config_descriptor(dev, 0, &config);
@@ -378,18 +385,19 @@ has_firmware:
   if (randomizer) {
     gpio |= RANDO;
   }
-
+  
   usleep(5000);
   command_send(dev_handle, GPIOFX3, gpio);
+  usleep(5000);
+  argument_send(dev_handle, DAT31_ATT, att);
+  usleep(5000);
+  argument_send(dev_handle, AD8340_VGA, gain);
   usleep(5000);
   command_send(dev_handle, STARTADC, samplerate);
   usleep(5000);
   command_send(dev_handle, STARTFX3, 0);
   usleep(5000);
   command_send(dev_handle, TUNERSTDBY, 0);
-  usleep(5000);
-  argument_send(dev_handle, AD8340_VGA, gain);
-  //argument_send(dev_handle, PRESELECTOR, 2);
   /*******/
 
   do {

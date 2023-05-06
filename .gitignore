@@ -3,3 +3,4 @@ compile_commands.json
 rx888_stream
 rx888_stream.dSYM
 .DS_Store
+.vscode

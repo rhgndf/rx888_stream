@@ -161,6 +161,7 @@ int main(int argc, char **argv) {
             {0, 0, 0, 0}};
 
         int option_index = 0;
+        int gainvalue = 0;
 
         c = getopt_long(argc, argv, "f:drs:hm:g:a:q:p:", long_options,
                         &option_index);
@@ -217,7 +218,7 @@ int main(int argc, char **argv) {
             break;
 
         case 'g':
-            int gainvalue = strtol(optarg, NULL, 10);
+            gainvalue = strtol(optarg, NULL, 10);
             if (gainvalue < 0 || gainvalue > 127) {
                 fprintf(stderr, "Invalid gain value %d\n", gainvalue);
                 printhelp();
@@ -253,11 +254,10 @@ int main(int argc, char **argv) {
             break;
         case 'h':
         case '?':
+        default:
             /* getopt_long already printed an error message. */
             printhelp();
             return 0;
-
-        default:
         }
     }
 

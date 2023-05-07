@@ -83,7 +83,7 @@ static void transfer_callback(struct libusb_transfer *transfer) {
                 samples[i] ^= 0xfffe * (samples[i] & 1);
             }
         }
-        ret = write(1, transfer->buffer, transfer->actual_length);
+        ret = write(STDOUT_FILENO, transfer->buffer, transfer->actual_length);
         if (ret < 0) {
             fprintf(stderr, "Error writing to stdout: %s", strerror(errno));
         }
@@ -136,7 +136,8 @@ static void printhelp(void) {
     fprintf(stderr, " --att, -a          Attenuation, default 0\n");
     fprintf(stderr, " --gain, -g         Gain value, default 3\n");
     fprintf(stderr, " --queuedepth, -q   Queue depth, default 16\n");
-    fprintf(stderr, " --reqsize, -p      Packets per transfer request, default 8\n");
+    fprintf(stderr,
+            " --reqsize, -p      Packets per transfer request, default 8\n");
     fprintf(stderr, " --help, -h         Print this help\n");
 }
 int main(int argc, char **argv) {
@@ -370,31 +371,28 @@ has_firmware:
 
     libusb_free_ss_endpoint_companion_descriptor(ep_comp);
 
-    bool allocfail = false;
-    databuffers = (u_char **)calloc(queuedepth, sizeof(u_char *));
+    databuffers = (unsigned char **)calloc(queuedepth, sizeof(u_char *));
+    if (databuffers == NULL) {
+        fprintf(stderr, "Could not allocate memory for data buffers\n");
+        goto end;
+    }
 
     transfers = (struct libusb_transfer **)calloc(
         queuedepth, sizeof(struct libusb_transfer *));
-
-    fprintf(stderr, "Queue depth: %d, Request size: %d\n", queuedepth, reqsize * pktsize);
-
-    if ((databuffers != NULL) && (transfers != NULL)) {
-        for (unsigned int i = 0; i < queuedepth; i++) {
-            databuffers[i] = (u_char *)malloc(reqsize * pktsize);
-            transfers[i] = libusb_alloc_transfer(0);
-            if ((databuffers[i] == NULL) || (transfers[i] == NULL)) {
-                allocfail = true;
-                break;
-            }
-        }
-
-    } else {
-        allocfail = true;
+    if (transfers == NULL) {
+        fprintf(stderr, "Could not allocate memory for transfer structures\n");
+        goto free_transfer_buf;
     }
 
-    if (allocfail) {
-        fprintf(stderr, "Failed to allocate buffers and transfers\n");
-        free_transfer_buffers(databuffers, transfers);
+    fprintf(stderr, "Queue depth: %d, Request size: %d\n", queuedepth,
+            reqsize * pktsize);
+
+    for (unsigned int i = 0; i < queuedepth; i++) {
+        databuffers[i] = (unsigned char *)malloc(reqsize * pktsize);
+        transfers[i] = libusb_alloc_transfer(0);
+        if ((databuffers[i] == NULL) || (transfers[i] == NULL)) {
+            goto free_transfer_buf;
+        }
     }
 
     for (unsigned int i = 0; i < queuedepth; i++) {
@@ -444,10 +442,10 @@ has_firmware:
     }
 
     fprintf(stderr, "Transfers completed\n");
-    free_transfer_buffers(databuffers, transfers);
-
     command_send(dev_handle, STOPFX3, 0);
 
+free_transfer_buf:
+    free_transfer_buffers(databuffers, transfers);
 end:
     if (dev_handle) {
         libusb_release_interface(dev_handle, interface_number);

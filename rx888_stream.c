@@ -126,7 +126,7 @@ static void sig_stop(int signum) {
     fprintf(stderr, "\nAbort. Stopping transfers\n");
     stop_transfers = true;
 }
-void printhelp() {
+static void printhelp(void) {
     fprintf(stderr, " --verbose, -v      Verbose output\n");
     fprintf(stderr, " --firmware, -f     Firmware file\n");
     fprintf(stderr, " --dither, -d       Enable dithering\n");

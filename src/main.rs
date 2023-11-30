@@ -192,26 +192,34 @@ fn main() {
         .claim_interface(0)
         .expect("Could not claim interface");
 
-        let mut gpio = 0;
-        if args.dither {
-            gpio |= GPIOPin::DITH as u32;
-        }
-        if args.randomize {
-            gpio |= GPIOPin::RANDO as u32;
-        }
-        if args.bias_hf {
-            gpio |= GPIOPin::BIAS_HF as u32;
-        }
-        if args.bias_vhf {
-            gpio |= GPIOPin::BIAS_VHF as u32;
-        }
-        if args.pga {
-            gpio |= GPIOPin::PGA_EN as u32;
-        }
+    let mut gpio = 0;
+    if args.dither {
+        gpio |= GPIOPin::DITH as u32;
+    }
+    if args.randomize {
+        gpio |= GPIOPin::RANDO as u32;
+    }
+    if args.bias_hf {
+        gpio |= GPIOPin::BIAS_HF as u32;
+    }
+    if args.bias_vhf {
+        gpio |= GPIOPin::BIAS_VHF as u32;
+    }
+    if args.pga {
+        gpio |= GPIOPin::PGA_EN as u32;
+    }
 
-    let device_name = handle.read_product_string_ascii(&handle.device().device_descriptor().expect("Could not get device descriptor")).unwrap_or("Unknown".to_string());
-    
-    if device_name == "RX888" { // Different attentuator settings for RX888
+    let device_name = handle
+        .read_product_string_ascii(
+            &handle
+                .device()
+                .device_descriptor()
+                .expect("Could not get device descriptor"),
+        )
+        .unwrap_or("Unknown".to_string());
+
+    if device_name == "RX888" {
+        // Different attentuator settings for RX888
         if args.attenuation == 0 {
             gpio |= GPIOPin::ATT_SEL1 as u32;
         } else if args.attenuation == 1 {
@@ -223,7 +231,7 @@ fn main() {
             panic!("Invalid attenuation setting, only specify 0, 1 or 2 for RX888 non mk2")
         }
     }
-    
+
     /*
     let device = handle.device();
     let config_descriptor = device
@@ -304,6 +312,7 @@ fn main() {
 
     transfer_pool.cancel_all();
 
-    rx888_send_command(handle.as_ref(), FX3Command::STARTADC, 10000000).expect("Could not downclock ADC");
+    rx888_send_command(handle.as_ref(), FX3Command::STARTADC, 10000000)
+        .expect("Could not downclock ADC");
     rx888_send_command(handle.as_ref(), FX3Command::STOPFX3, 0).expect("Could not stop FX3");
 }

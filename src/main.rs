@@ -1,4 +1,4 @@
-mod ezusb;
+mod fx3;
 mod rx888;
 
 use std::{
@@ -164,7 +164,7 @@ fn main() {
 
         let mut file = File::open(args.firmware.unwrap()).expect("Could not open firmware file");
 
-        ezusb::fx3_load_ram(handle, &mut file).expect("Could not load firmware");
+        fx3::fx3_load_ram(handle, &mut file).expect("Could not load firmware");
 
         thread::sleep(Duration::from_millis(1000));
     }

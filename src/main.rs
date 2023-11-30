@@ -192,6 +192,38 @@ fn main() {
         .claim_interface(0)
         .expect("Could not claim interface");
 
+        let mut gpio = 0;
+        if args.dither {
+            gpio |= GPIOPin::DITH as u32;
+        }
+        if args.randomize {
+            gpio |= GPIOPin::RANDO as u32;
+        }
+        if args.bias_hf {
+            gpio |= GPIOPin::BIAS_HF as u32;
+        }
+        if args.bias_vhf {
+            gpio |= GPIOPin::BIAS_VHF as u32;
+        }
+        if args.pga {
+            gpio |= GPIOPin::PGA_EN as u32;
+        }
+
+    let device_name = handle.read_product_string_ascii(&handle.device().device_descriptor().expect("Could not get device descriptor")).unwrap_or("Unknown".to_string());
+    
+    if device_name == "RX888" { // Different attentuator settings for RX888
+        if args.attenuation == 0 {
+            gpio |= GPIOPin::ATT_SEL1 as u32;
+        } else if args.attenuation == 1 {
+            gpio |= GPIOPin::ATT_SEL1 as u32;
+            gpio |= GPIOPin::ATT_SEL0 as u32;
+        } else if args.attenuation == 2 {
+            gpio |= GPIOPin::ATT_SEL0 as u32;
+        } else {
+            panic!("Invalid attenuation setting, only specify 0, 1 or 2 for RX888 non mk2")
+        }
+    }
+    
     /*
     let device = handle.device();
     let config_descriptor = device
@@ -217,22 +249,6 @@ fn main() {
         GainMode::High => args.gain,
         GainMode::Low => args.gain | 0x80,
     };
-    let mut gpio = 0;
-    if args.dither {
-        gpio |= GPIOPin::DITH as u32;
-    }
-    if args.randomize {
-        gpio |= GPIOPin::RANDO as u32;
-    }
-    if args.bias_hf {
-        gpio |= GPIOPin::BIAS_HF as u32;
-    }
-    if args.bias_vhf {
-        gpio |= GPIOPin::BIAS_VHF as u32;
-    }
-    if args.pga {
-        gpio |= GPIOPin::PGA_EN as u32;
-    }
 
     let terminate = Arc::new(std::sync::atomic::AtomicBool::new(false));
     {

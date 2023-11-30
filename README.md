@@ -9,6 +9,10 @@ Written in rust for
 ```
 RUSTFLAGS="-C target-cpu=native" cargo build --profile release
 ```
+### Install
+```
+RUSTFLAGS="-C target-cpu=native" cargo install --path .
+```
 ### Run
 This outputs the samples to stdout. 
 ```

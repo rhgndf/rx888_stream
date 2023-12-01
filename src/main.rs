@@ -295,8 +295,8 @@ fn main() {
     let packet_size = 131072;
     let num_transfers = 32;
     let gain = match args.gain_mode {
-        GainMode::High => args.gain,
-        GainMode::Low => args.gain | 0x80,
+        GainMode::High => args.gain | 0x80,
+        GainMode::Low => args.gain,
     };
 
     let terminate = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -353,7 +353,8 @@ fn main() {
             panic!("Invalid attenuation setting, only specify 0, 1 or 2 for RX888 non mk2")
         }
     }
-
+    println!("Attenuation: {}", attenuation);
+    println!("Gain: {}", gain);
     rx888_send_command(&handle, FX3Command::GPIOFX3, gpio).expect("Could not set GPIO");
     rx888_send_argument(&handle, ArgumentList::DAT31_ATT, attenuation as u16)
         .expect("Could not set ATT");

@@ -94,7 +94,7 @@ enum Commands {
     /// Accept from VHF input instead of HF input
     VHF {
         /// Tuner Frequency
-        #[arg(long, display_order = 100, default_value_t = 144000000)]
+        #[arg(long, display_order = 100, default_value_t = 145000000)]
         frequency: u64,
 
         /// Tuner LNA gain 0-29

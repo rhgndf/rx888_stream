@@ -7,7 +7,7 @@ Written in rust for
 ## Building and running
 ### Build
 ```
-RUSTFLAGS="-C target-cpu=native" cargo build --profile release
+r
 ```
 ### Install
 ```
@@ -16,7 +16,11 @@ RUSTFLAGS="-C target-cpu=native" cargo install --path .
 ### Run
 This outputs the samples to stdout. 
 ```
-./target/release/rx888_stream -f SDDC_FX3.img --sample-rate 100000000 -r /dev/null -
-./target/release/rx888_stream --help # view help
+# HF (default)
+./target/release/rx888_stream -f SDDC_FX3.img -r --sample-rate 100000000 -o -
+# VHF
+./target/release/rx888_stream vhf -f SDDC_FX3.img -r --frequency 145000000 --sample-rate 100000000 -o -
+# View help
+./target/release/rx888_stream --help
 ```
 

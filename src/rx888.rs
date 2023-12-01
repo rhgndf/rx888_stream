@@ -54,7 +54,7 @@ pub enum FX3Command {
     // R82XX family Tuner functions
     // Initialize R82XX tuner
     // WRITE: NONE
-    TUNERINIT = 0xB4,
+    TUNERINIT = 0xB4,   
 
     // Tune to a sepcific frequency
     // WRITE: UINT64
@@ -146,17 +146,34 @@ pub fn rx888_send_command(
     )
 }
 
+pub fn rx888_send_command_u64(
+    handle: &DeviceHandle<Context>,
+    cmd: FX3Command,
+    data: u64,
+) -> rusb::Result<usize> {
+    let timeout = Duration::from_secs(1);
+
+    handle.write_control(
+        LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
+        cmd as u8,
+        0,
+        0,
+        &data.to_le_bytes(),
+        timeout,
+    )
+}
+
 pub fn rx888_send_argument(
     handle: &DeviceHandle<Context>,
     cmd: ArgumentList,
-    data: u32,
+    data: u16,
 ) -> rusb::Result<usize> {
     let timeout = Duration::from_secs(1);
 
     handle.write_control(
         LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT,
         FX3Command::SETARGFX3 as u8,
-        data as u16,
+        data,
         cmd as u16,
         &[0],
         timeout,

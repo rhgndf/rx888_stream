@@ -7,7 +7,7 @@ Written in rust for
 ## Building and running
 ### Build
 ```
-r
+RUSTFLAGS="-C target-cpu=native" cargo build --profile release
 ```
 ### Install
 ```

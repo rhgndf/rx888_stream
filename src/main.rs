@@ -296,7 +296,7 @@ fn main() {
     let num_transfers = 32;
     let gain = match args.gain_mode {
         GainMode::High => args.gain | 0x80,
-        GainMode::Low => args.gain,
+        GainMode::Low => args.gain
     };
 
     let terminate = Arc::new(std::sync::atomic::AtomicBool::new(false));

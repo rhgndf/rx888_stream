@@ -54,7 +54,7 @@ pub enum FX3Command {
     // R82XX family Tuner functions
     // Initialize R82XX tuner
     // WRITE: NONE
-    TUNERINIT = 0xB4,   
+    TUNERINIT = 0xB4,
 
     // Tune to a sepcific frequency
     // WRITE: UINT64

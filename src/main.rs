@@ -292,8 +292,8 @@ fn main() {
         .max_packet_size();
 
         */
-    let packet_size = 131072;
-    let num_transfers = 32;
+    let packet_size = 1048576;
+    let num_transfers = 128;
     let gain = match args.gain_mode {
         GainMode::High => args.gain | 0x80,
         GainMode::Low => args.gain

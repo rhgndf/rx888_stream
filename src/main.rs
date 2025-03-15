@@ -87,6 +87,14 @@ struct Cli {
     /// Measurement mode, measures the ADC sample rate
     #[arg(long, global = true, default_value_t = false)]
     measure: bool,
+
+    /// USB transfer packet size
+    #[arg(long, global = true, default_value_t = 131072)]
+    packet_size: usize,
+
+    /// Number of USB transfers
+    #[arg(long, global = true, default_value_t = 32)]
+    num_transfers: usize,
 }
 
 #[derive(Subcommand)]
@@ -229,7 +237,7 @@ fn main() {
         }
     });
 
-    let mut handle = open_device_with_vid_pid_timeout(
+    let handle = open_device_with_vid_pid_timeout(
         &context,
         FX3_VID,
         FX3_FIRMWARE_PID,
@@ -292,13 +300,13 @@ fn main() {
         .max_packet_size();
 
         */
-    let packet_size = 131072;
-    let num_transfers = 32;
+    let packet_size = args.packet_size;
+    let num_transfers = args.num_transfers;
     let gain = match args.gain_mode {
         GainMode::High => args.gain | 0x80,
         GainMode::Low => args.gain
     };
-
+    
     let terminate = Arc::new(std::sync::atomic::AtomicBool::new(false));
     {
         let terminate = terminate.clone();

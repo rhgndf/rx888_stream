@@ -232,7 +232,7 @@ fn main() {
         if path == PathBuf::from("-") {
             Box::new(std::io::stdout()) as Box<dyn Write>
         } else {
-            let file = File::open(path).expect("Could not open output file");
+            let file = File::create(path).expect("Could not open output file");
             Box::new(file) as Box<dyn Write>
         }
     });
@@ -393,7 +393,7 @@ fn main() {
             }
         }
         let _ = output_file.iter_mut().for_each(|file| {
-            let _ = file.write_all(&data);
+            file.write_all(&data).expect("Stream output error")
         });
         if args.measure || output_file.is_none() {
             measurement.add_packet(data.len() / 2);

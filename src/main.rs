@@ -25,6 +25,12 @@ const FX3_VID: u16 = 0x04b4;
 const FX3_BOOTLOADER_PID: u16 = 0x00f3;
 const FX3_FIRMWARE_PID: u16 = 0x00f1;
 
+/// Maximum valid `--vhf-lna` index. The SDDC firmware's `lna_gains[]` and
+/// `mixer_gains[]` tables have `GAIN_STEPS = 29` entries indexed `0..=28`;
+/// passing 29 reads off the end (undefined behaviour in stock firmware
+/// which has no bounds check). Update here if `GAIN_STEPS` ever changes.
+const MAX_VHF_LNA_GAIN: u8 = 28;
+
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 enum GainMode {
     High,
@@ -105,8 +111,9 @@ enum Commands {
         #[arg(long, display_order = 100, default_value_t = 145000000)]
         frequency: u64,
 
-        /// Tuner LNA gain 0-29
-        #[arg(long, display_order = 100, default_value_t = 29, value_parser = value_parser!(u8).range(0..=29))]
+        /// Tuner LNA gain 0-28
+        #[arg(long, display_order = 100, default_value_t = MAX_VHF_LNA_GAIN,
+              value_parser = value_parser!(u8).range(0..=MAX_VHF_LNA_GAIN as i64))]
         vhf_lna: u8,
 
         /// Tuner VGA gain 0-15

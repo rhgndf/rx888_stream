@@ -14,7 +14,7 @@ use std::{
 
 use bytemuck::cast_slice_mut;
 use clap::{value_parser, Parser, Subcommand, ValueEnum};
-use rusb::{Context, UsbContext};
+use rusb::{Context, DeviceHandle, UsbContext};
 use rusb_async::TransferPool;
 use rx888::{
     rx888_send_argument, rx888_send_command, rx888_send_command_u64, ArgumentList, FX3Command,
@@ -200,6 +200,30 @@ fn open_device_with_vid_pid_timeout(
     None
 }
 
+/// Stops the FX3's GPIF streaming engine when dropped.
+///
+/// The capture loop's normal exit sends STOPFX3 explicitly, but a signal
+/// (SIGINT/SIGTERM) interrupts the blocking libusb event wait and makes
+/// `rusb-async`'s `poll()` panic *from inside the crate* (it `panic!`s on any
+/// `libusb_handle_events` error, including EINTR / error -10). A panic skips
+/// the explicit shutdown, so without this guard an interrupted capture leaves
+/// the FX3 streaming into a dead endpoint — the next run then fails to start
+/// it (STARTFX3 timeout / RESETFX3 Io) and needs a physical replug.
+///
+/// As a Drop guard it runs during the panic unwind too (the build uses the
+/// default `panic = "unwind"`), guaranteeing STOPFX3 is sent on every exit
+/// path. Errors are ignored: we're tearing down regardless.
+struct Fx3StopGuard {
+    handle: Arc<DeviceHandle<Context>>,
+}
+
+impl Drop for Fx3StopGuard {
+    fn drop(&mut self) {
+        let _ = rx888_send_command(self.handle.as_ref(), FX3Command::STARTADC, 10_000_000);
+        let _ = rx888_send_command(self.handle.as_ref(), FX3Command::STOPFX3, 0);
+    }
+}
+
 fn main() {
     let args = Cli::parse();
     let context = Context::new().expect("Could not create USB context");
@@ -372,6 +396,12 @@ fn main() {
     rx888_send_command(&handle, FX3Command::STARTFX3, 0).expect("Could not start FX3");
 
     let handle = Arc::new(handle);
+    // Guarantees STOPFX3 on every exit path, including a signal-induced panic
+    // inside rusb-async's poll(). See Fx3StopGuard. Declared before the
+    // transfer pool so it drops *after* the pool cancels its transfers.
+    let _stop_guard = Fx3StopGuard {
+        handle: handle.clone(),
+    };
     let mut transfer_pool =
         TransferPool::new(handle.clone()).expect("Could not create transfer pool");
 
@@ -385,7 +415,17 @@ fn main() {
     let mut measurement = Measurement::new();
 
     while !terminate.load(std::sync::atomic::Ordering::Relaxed) {
-        let mut data = transfer_pool.poll(timeout).expect("Transfer failed");
+        let mut data = match transfer_pool.poll(timeout) {
+            Ok(data) => data,
+            // A signal (SIGINT/SIGTERM) interrupting the blocking libusb event
+            // wait can surface here as an error. If the handler has already set
+            // `terminate`, this is an orderly shutdown: break to the graceful
+            // STOPFX3 below rather than treating it as a fatal transfer error.
+            // (The signal can alternatively make poll() panic from inside
+            // rusb-async on EINTR — that path is covered by Fx3StopGuard.)
+            Err(_) if terminate.load(std::sync::atomic::Ordering::Relaxed) => break,
+            Err(e) => panic!("Transfer failed: {e:?}"),
+        };
         if args.randomize {
             let data_u16: &mut [u16] = cast_slice_mut(&mut data);
             for i in 0..data_u16.len() {
@@ -405,8 +445,6 @@ fn main() {
     }
 
     transfer_pool.cancel_all();
-
-    rx888_send_command(handle.as_ref(), FX3Command::STARTADC, 10000000)
-        .expect("Could not downclock ADC");
-    rx888_send_command(handle.as_ref(), FX3Command::STOPFX3, 0).expect("Could not stop FX3");
+    // STARTADC-downclock + STOPFX3 are sent by Fx3StopGuard's Drop as the
+    // scope unwinds — on both the normal break above and a poll() panic.
 }

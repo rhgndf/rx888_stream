@@ -196,6 +196,8 @@ fn open_device_with_vid_pid_timeout(
         if let Some(handle) = context.open_device_with_vid_pid(vid, pid) {
             return Some(handle);
         }
+        // Don't busy-spin the USB enumeration; poll at a modest cadence.
+        thread::sleep(Duration::from_millis(50));
     }
     None
 }
@@ -205,27 +207,32 @@ fn main() {
     let context = Context::new().expect("Could not create USB context");
 
     if args.firmware.is_some() {
-        match context.open_device_with_vid_pid(FX3_VID, FX3_FIRMWARE_PID) {
-            Some(handle) => {
-                rx888_send_command(&handle, FX3Command::RESETFX3, 0)
-                    .expect("Could not reset FX3 to bootloader mode");
+        // If a firmware-mode device is already present, ask it to drop back to
+        // the bootloader so we can reload. A capture that died badly (e.g. a
+        // hard kill mid-stream) can leave the FX3 wedged and unable to ack
+        // RESETFX3 — in that case force a USB-level device reset, the libusb
+        // equivalent of a replug, so recovery doesn't need the user to
+        // physically unplug it.
+        if let Some(handle) = context.open_device_with_vid_pid(FX3_VID, FX3_FIRMWARE_PID) {
+            if rx888_send_command(&handle, FX3Command::RESETFX3, 0).is_err() {
+                eprintln!("FX3 did not ack RESETFX3 (wedged?); forcing a USB reset");
+                let _ = handle.reset();
             }
-            None => {}
         }
 
+        // 3 s, not 1 s: a forced USB reset above (or a slow host re-enumerating
+        // the bootloader) can take longer than a clean RESETFX3.
         let handle = open_device_with_vid_pid_timeout(
             &context,
             FX3_VID,
             FX3_BOOTLOADER_PID,
-            Duration::from_secs(1),
+            Duration::from_secs(3),
         )
         .expect("Could not find or open bootloader");
 
         let mut file = File::open(args.firmware.unwrap()).expect("Could not open firmware file");
 
         fx3::fx3_load_ram(handle, &mut file).expect("Could not load firmware");
-
-        thread::sleep(Duration::from_millis(1000));
     }
 
     let mut output_file = args.output.map(|path| {
@@ -237,11 +244,14 @@ fn main() {
         }
     });
 
+    // After fx3_load_ram the FX3 jumps to the new firmware and re-enumerates
+    // from the bootloader PID to the firmware PID, which can take a beat. Poll
+    // for it (3 s) rather than sleeping a fixed guess then opening once.
     let handle = open_device_with_vid_pid_timeout(
         &context,
         FX3_VID,
         FX3_FIRMWARE_PID,
-        Duration::from_secs(1),
+        Duration::from_secs(3),
     )
     .expect("Could not find or open device, did you forget to specify the firmware?");
 
@@ -369,7 +379,25 @@ fn main() {
     rx888_send_argument(&handle, ArgumentList::AD8340_VGA, gain as u16).expect("Could not set VGA");
     rx888_send_command(&handle, FX3Command::STARTADC, args.sample_rate)
         .expect("Could not start ADC");
-    rx888_send_command(&handle, FX3Command::STARTFX3, 0).expect("Could not start FX3");
+
+    // STARTFX3 starts the GPIF streaming engine. Freshly after a firmware
+    // reload the firmware's command loop is occasionally not ready yet and the
+    // control transfer times out. A short bounded retry clears that without a
+    // re-run; if it still won't start, the device needs a power-cycle/replug.
+    let mut start_attempts = 0;
+    loop {
+        match rx888_send_command(&handle, FX3Command::STARTFX3, 0) {
+            Ok(_) => break,
+            Err(e) => {
+                start_attempts += 1;
+                if start_attempts >= 5 {
+                    panic!("Could not start FX3 after {start_attempts} attempts: {e:?}");
+                }
+                eprintln!("STARTFX3 attempt {start_attempts} failed ({e:?}); retrying…");
+                thread::sleep(Duration::from_millis(200));
+            }
+        }
+    }
 
     let handle = Arc::new(handle);
     let mut transfer_pool =

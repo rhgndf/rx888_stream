@@ -5,6 +5,16 @@ use rusb::{
     Context, DeviceHandle,
 };
 
+/// Timeout for all vendor-class USB control transfers to the FX3.
+///
+/// 1 s was too tight: on first SuperSpeed enumeration the firmware can take
+/// > 1 s to ack STARTFX3 on at least one Intel host xHCI (Z270), causing a
+/// PollTimeout panic. 5 s is comfortably above the longest observed wait
+/// and harmless for the fast commands. Applied uniformly to all three send
+/// helpers — they all issue the same kind of vendor control transfer and
+/// are equally exposed to first-enumeration latency.
+const USB_CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[allow(dead_code)]
 pub enum FX3Command {
     // Start GPII engine and stream the data from ADC
@@ -134,15 +144,13 @@ pub fn rx888_send_command(
     cmd: FX3Command,
     data: u32,
 ) -> rusb::Result<usize> {
-    let timeout = Duration::from_secs(1);
-
     handle.write_control(
         LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
         cmd as u8,
         0,
         0,
         &data.to_le_bytes(),
-        timeout,
+        USB_CONTROL_TIMEOUT,
     )
 }
 
@@ -151,15 +159,13 @@ pub fn rx888_send_command_u64(
     cmd: FX3Command,
     data: u64,
 ) -> rusb::Result<usize> {
-    let timeout = Duration::from_secs(1);
-
     handle.write_control(
         LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR,
         cmd as u8,
         0,
         0,
         &data.to_le_bytes(),
-        timeout,
+        USB_CONTROL_TIMEOUT,
     )
 }
 
@@ -168,14 +174,12 @@ pub fn rx888_send_argument(
     cmd: ArgumentList,
     data: u16,
 ) -> rusb::Result<usize> {
-    let timeout = Duration::from_secs(1);
-
     handle.write_control(
         LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_OUT,
         FX3Command::SETARGFX3 as u8,
         data,
         cmd as u16,
         &[0],
-        timeout,
+        USB_CONTROL_TIMEOUT,
     )
 }

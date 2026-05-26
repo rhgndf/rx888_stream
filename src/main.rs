@@ -330,7 +330,14 @@ fn main() {
         }) => {
             gpio |= GPIOPin::VHF_EN as u32;
 
-            rx888_send_command(&handle, FX3Command::TUNERINIT, 0)
+            // Pass the R828D's reference-clock frequency (16 MHz) here, not 0.
+            // The firmware forwards this value as the `freq` argument to
+            // `r820_initialize()`. Without a working reference the R828D PLL
+            // produces unpredictable LO frequencies and VHF reception drifts
+            // run-to-run with no decodable signal at the requested tune freq.
+            // Constant taken from ExtIO_sddc Core/radio/RX888R2Radio.cpp:3:
+            //     #define R828D_FREQ (16000000) // R820T reference frequency
+            rx888_send_command(&handle, FX3Command::TUNERINIT, 16_000_000)
                 .expect("Could not initialize tuner");
             rx888_send_command_u64(&handle, FX3Command::TUNERTUNE, frequency)
                 .expect("Could not tune tuner");

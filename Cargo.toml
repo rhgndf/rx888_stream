@@ -8,7 +8,10 @@ edition = "2021"
 [dependencies]
 bytemuck = "1.14.0"
 clap = { version = "4.4.10", features = ["derive"] }
-ctrlc = "3.4.1"
+# `termination` makes the signal handler also fire on SIGTERM and SIGHUP,
+# not just SIGINT. Without it, `timeout`/`kill`/systemd (all SIGTERM) bypass
+# the graceful STOPFX3 shutdown and leave the FX3 GPIF engine running.
+ctrlc = { version = "3.4.1", features = ["termination"] }
 debug_print = "1.0.0"
 rusb = "0.9.3"
 rusb-async = "0.0.1-alpha"
